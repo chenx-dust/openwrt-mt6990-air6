@@ -2,6 +2,14 @@
 . /lib/functions/system.sh
 . /lib/functions/uci-defaults.sh
 
+air6_raw1_mac() {
+	local part mac
+	part="$(find_mmc_part raw1)"
+	[ -n "$part" ] || return 0
+	mac="$(strings "$part" 2>/dev/null | sed -n "s/^$1=//p" | head -n 1)"
+	macaddr_canonicalize "$mac"
+}
+
 board_config_update
 
 case "$(board_name)" in
@@ -30,6 +38,25 @@ fiberhome,lg6851f)
 	ucidef_set_interface "modem5g" device "ccmni" protocol "ql_datacall" \
 		apn "cmnet" iptype "3" roamingtype "3" mtu "1400" \
 		plmn "46002" auto_conf "1" auto "1"
+	;;
+softbank,air6)
+	# Both MT7531 switch jacks (lan=port1, wan=port2) are bridged into LAN;
+	# the integrated 5G modem is the only uplink.
+	ucidef_set_interface "lan" device "lan wan" protocol "static" \
+		ipaddr "192.168.99.1" netmask "255.255.255.0"
+	lan_mac="$(air6_raw1_mac mac0)"
+	lan2_mac="$(air6_raw1_mac mac1)"
+	[ -n "$lan_mac" ] && ucidef_set_network_device_mac "lan" "$lan_mac"
+	[ -n "$lan2_mac" ] && ucidef_set_network_device_mac "wan" "$lan2_mac"
+	[ -n "$lan_mac" ] && ucidef_set_network_device_mac "br-lan" "$lan_mac"
+	ucidef_set_interface "modem5g" device "ccmni" protocol "ql_datacall" \
+		apn "cmnet" iptype "3" roamingtype "3" mtu "1400" \
+		plmn "46002" auto_conf "1" auto "1"
+	ucidef_set_country "JP"
+	ucidef_set_wireless "2g" "OpenWrt-2G" "sae-mixed" "12345678"
+	ucidef_set_wireless "5g" "OpenWrt-5G" "sae-mixed" "12345678"
+	ucidef_set_wireless "6g" "OpenWrt-6G" "sae" "12345678"
+	ucidef_set_root_password_hash '$6$Air6RootPw2026$JcQHDkcNB/pi/zrXyg5P6fkAp2mbK4zReWkxp3isX140/lpUr1ERhbtC4fqWiLcvFLD8YGj.622.4g1bHxApE/'
 	;;
 esac
 

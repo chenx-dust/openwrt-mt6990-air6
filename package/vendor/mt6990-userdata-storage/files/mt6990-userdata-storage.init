@@ -13,6 +13,7 @@ is_mounted() {
 }
 
 start() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "fiberhome,lg6851f" ] || return 0
 	mkdir -p "$mountpoint"
 	if ! is_mounted; then
 		source_mount="$(awk -v dev="$device" '$1 == dev { print $2; exit }' /proc/mounts)"

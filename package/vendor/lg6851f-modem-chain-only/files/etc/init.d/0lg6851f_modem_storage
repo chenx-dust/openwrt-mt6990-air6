@@ -8,6 +8,8 @@ STOP=91
 : "${WIFI_EEPROM_SOURCE:=/mnt/vendor/nvcfg/e2p}"
 : "${WIFI_EEPROM_TEMPLATE:=/rom/lib/firmware/mediatek/mt7996/mt7996_eeprom_mt6990.bin}"
 : "${WIFI_EEPROM_ACTIVE:=/lib/firmware/mediatek/mt7996/mt7996_eeprom_mt6990.bin}"
+: "${AIR6_WIFI_EEPROM_TEMPLATE:=/rom/lib/firmware/mediatek/mt7996/mt7996_eeprom_mt6990_air6.bin}"
+: "${AIR6_WIFI_EEPROM_ACTIVE:=/lib/firmware/mediatek/mt7996/mt7996_eeprom_mt6990_air6.bin}"
 
 log_msg() {
 	logger -t lg6851f_modem_storage "$*"
@@ -117,8 +119,77 @@ prepare_wifi_eeprom() {
 	mv -f "$tmp" "$WIFI_EEPROM_ACTIVE"
 }
 
+prepare_air6_wifi_eeprom() {
+	local dir tmp staged ext raw hdr blk size off rc
+
+	[ -f "$AIR6_WIFI_EEPROM_TEMPLATE" ] || {
+		log_msg "ERROR: immutable Air 6 MT7990 EEPROM template is missing"
+		return 1
+	}
+	[ "$(wc -c < "$AIR6_WIFI_EEPROM_TEMPLATE")" -eq 7680 ] || {
+		log_msg "ERROR: immutable Air 6 MT7990 EEPROM template has invalid size"
+		return 1
+	}
+	[ "$(hexdump -v -n 2 -e '2/1 "%02x"' "$AIR6_WIFI_EEPROM_TEMPLATE")" = "9079" ] || {
+		log_msg "ERROR: immutable Air 6 MT7990 EEPROM template has invalid chip ID"
+		return 1
+	}
+
+	dir="${AIR6_WIFI_EEPROM_ACTIVE%/*}"
+	mkdir -p "$dir"
+	tmp="$(mktemp /tmp/.mt7990-air6-eeprom.XXXXXX)" || return 1
+	if ! cp "$AIR6_WIFI_EEPROM_TEMPLATE" "$tmp"; then
+		rm -f "$tmp"
+		return 1
+	fi
+
+	raw="$(find_mmc_part raw1 2>/dev/null)"
+	[ -b "$raw" ] || raw=/dev/mmcblk0p40
+	if [ -b "$raw" ]; then
+		hdr="$(dd if="$raw" bs=4096 count=1 2>/dev/null | tr -d '\000')"
+		blk="$(printf '%s\n' "$hdr" | sed -n 's/^e2p=\([0-9][0-9]*\),.*/\1/p' | head -n 1)"
+		size="$(printf '%s\n' "$hdr" | sed -n 's/^e2p=[0-9][0-9]*,\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+		if [ -n "$blk" ] && [ "$size" = "7680" ]; then
+			off=$((blk * 262144))
+			ext="$(mktemp /tmp/.mt7990-air6-raw1.XXXXXX)" || { rm -f "$tmp"; return 1; }
+			if dd if="$raw" of="$ext" bs=1 skip="$off" count="$size" 2>/dev/null &&
+			   [ "$(wc -c < "$ext")" -eq 7680 ] &&
+			   [ "$(hexdump -v -n 2 -e '2/1 "%02x"' "$ext")" = "9079" ]; then
+				mv -f "$ext" "$tmp"
+				log_msg "using Air 6 factory MT7990 EEPROM from raw1 (blk=$blk, size=$size)"
+			else
+				rm -f "$ext"
+				log_msg "WARN: Air 6 raw1 EEPROM payload invalid; using tri-band template"
+			fi
+		else
+			log_msg "WARN: Air 6 raw1 e2p metadata missing (blk=${blk:-none}, size=${size:-none}); using tri-band template"
+		fi
+	else
+		log_msg "WARN: Air 6 raw1 block device unavailable; using tri-band template"
+	fi
+
+	if cmp -s "$tmp" "$AIR6_WIFI_EEPROM_ACTIVE" 2>/dev/null; then
+		rm -f "$tmp"
+		return 0
+	fi
+	staged="$(mktemp "$dir/.mt7990-air6-eeprom.XXXXXX")" || { rm -f "$tmp"; return 1; }
+	if cp "$tmp" "$staged" && chmod 0644 "$staged" && mv -f "$staged" "$AIR6_WIFI_EEPROM_ACTIVE"; then
+		rc=0
+	else
+		rc=1
+		rm -f "$staged"
+	fi
+	rm -f "$tmp"
+	return "$rc"
+}
+
 start() {
-	local slot
+	local slot board
+
+	board="$(cat /tmp/sysinfo/board_name 2>/dev/null)"
+	if [ -z "$board" ] && grep -aq 'softbank,air6' /proc/device-tree/compatible 2>/dev/null; then
+		board=softbank,air6
+	fi
 
 	link_gpt_partitions
 	slot="$(sed -n 's/.*bootslot=\([^ ]*\).*/\1/p' /proc/cmdline)"
@@ -143,7 +214,11 @@ start() {
 	[ -e /vendor/etc ] || ln -s /etc /vendor/etc
 
 	mount_part /dev/block/nvcfg /mnt/vendor/nvcfg
-	prepare_wifi_eeprom || log_msg "ERROR: failed to prepare MT7990 EEPROM"
+	if [ "$board" = "softbank,air6" ]; then
+		prepare_air6_wifi_eeprom || log_msg "ERROR: failed to prepare Air 6 MT7990 EEPROM"
+	else
+		prepare_wifi_eeprom || log_msg "ERROR: failed to prepare MT7990 EEPROM"
+	fi
 	mount_part /dev/block/nvdata /mnt/vendor/nvdata
 	mount_part /dev/block/protect1 /mnt/vendor/protect_f
 	mount_part /dev/block/protect2 /mnt/vendor/protect_s

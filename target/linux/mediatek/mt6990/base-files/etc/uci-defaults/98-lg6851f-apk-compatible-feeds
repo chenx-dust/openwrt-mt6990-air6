@@ -1,5 +1,7 @@
 #!/bin/sh
 
+[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "fiberhome,lg6851f" ] || exit 0
+
 # LG6851F/MT6990 uses a locally maintained target, kernel ABI and Cortex-A55
 # package ABI. Never mix it with rolling OpenWrt snapshot repositories.
 

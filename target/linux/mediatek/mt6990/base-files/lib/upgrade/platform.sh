@@ -183,6 +183,10 @@ platform_check_image() {
 	[ -n "$board" ] || board="$(board_name 2>/dev/null)"
 	case "$board" in
 		fiberhome,lg6851f|fiberhome_lg6851f) ;;
+		softbank,air6|softbank_air6)
+			echo "SoftBank Air 6: LuCI sysupgrade is not supported. Flash boot-verified.img and root.squashfs via SP Flash Tool or fastboot."
+			return 1
+			;;
 		*) echo "This package is only for FiberHome LG6851F (board=$board)."; return 1 ;;
 	esac
 
@@ -255,8 +259,18 @@ platform_check_image() {
 }
 
 platform_do_upgrade() {
-	local image="$1" bootctrl_before bootctrl_after expected_bootctrl control magic
+	local board image="$1" bootctrl_before bootctrl_after expected_bootctrl control magic
 	local connsys_expected connsys_actual
+
+	board="$(cat /tmp/sysinfo/board_name 2>/dev/null)"
+	[ -n "$board" ] || board="$(board_name 2>/dev/null)"
+	case "$board" in
+		fiberhome,lg6851f|fiberhome_lg6851f) ;;
+		*)
+			echo "Unsupported board for LG6851F upgrade: $board" >&2
+			exit 1
+			;;
+	esac
 
 	lg6851f_trace "BEGIN image=$image slot=b"
 	control=/tmp/lg6851f-upgrade-control
@@ -382,7 +396,14 @@ platform_do_upgrade() {
 }
 
 platform_copy_config() {
-	local mnt="$LG6851F_TRACE_MNT"
+	local board mnt="$LG6851F_TRACE_MNT"
+
+	board="$(cat /tmp/sysinfo/board_name 2>/dev/null)"
+	[ -n "$board" ] || board="$(board_name 2>/dev/null)"
+	case "$board" in
+		fiberhome,lg6851f|fiberhome_lg6851f) ;;
+		*) return 0 ;;
+	esac
 
 	[ -n "$UPGRADE_BACKUP" ] && [ -f "$UPGRADE_BACKUP" ] || return 0
 	mkdir -p "$mnt"

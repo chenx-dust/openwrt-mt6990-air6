@@ -2,6 +2,7 @@
 # Restore A-slot CONN_RO/GNSS before network, Wi-Fi and modem startup.
 
 lg6851f_repair_connsys_gnss_a() {
+	grep -aq 'fiberhome,lg6851f' /proc/device-tree/compatible 2>/dev/null || return 0
 	/usr/sbin/lg6851f-repair-connsys-gnss-a >/dev/null 2>&1 || true
 }
 

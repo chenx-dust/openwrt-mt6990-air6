@@ -27,8 +27,9 @@ set_network auto_conf 1
 set_network auto 1
 
 # Migrate images which previously replaced the physical WAN with the modem.
-if [ "$(uci -q get network.wan.proto)" = "ql_datacall" ] || \
-   [ "$(uci -q get network.wan.device)" = "ccmni" ]; then
+if [ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "fiberhome,lg6851f" ] &&
+   { [ "$(uci -q get network.wan.proto)" = "ql_datacall" ] ||
+     [ "$(uci -q get network.wan.device)" = "ccmni" ]; }; then
 	uci -q batch <<-'EOF'
 		set network.wan='interface'
 		set network.wan.proto='dhcp'
@@ -77,5 +78,9 @@ done
 }
 
 [ "$changed" = 0 ] || uci -q commit firewall
+
+if [ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "softbank,air6" ]; then
+	[ -x /etc/init.d/air6-panel-led ] && /etc/init.d/air6-panel-led enable
+fi
 
 exit 0

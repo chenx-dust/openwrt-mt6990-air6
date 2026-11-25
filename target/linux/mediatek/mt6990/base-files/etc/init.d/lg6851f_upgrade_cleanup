@@ -4,6 +4,7 @@
 START=99
 
 start() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "fiberhome,lg6851f" ] || return 0
 	local mnt=/tmp/lg6851f-user-data-cleanup source_mount mounted_here=0
 	local saved="$mnt/openwrt-sysupgrade/sysupgrade.tgz"
 

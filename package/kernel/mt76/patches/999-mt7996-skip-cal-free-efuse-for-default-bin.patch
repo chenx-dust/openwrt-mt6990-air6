@@ -8,7 +8,7 @@ cal-free EFUSE reads.
 
 --- a/mt7996/mt7996.h
 +++ b/mt7996/mt7996.h
-@@ -49,6 +49,11 @@
+@@ -49,6 +49,15 @@
  #define MT7996_FIRMWARE_DSP		"mediatek/mt7996/mt7996_dsp.bin"
  #define MT7996_ROM_PATCH		"mediatek/mt7996/mt7996_rom_patch.bin"
  
@@ -16,6 +16,10 @@ cal-free EFUSE reads.
 +#define MT7996_FIRMWARE_WM_MT6990	"mediatek/mt7996/mt7996_wm_mt6990.bin"
 +#define MT7996_FIRMWARE_DSP_MT6990	"mediatek/mt7996/mt7996_dsp_mt6990.bin"
 +#define MT7996_ROM_PATCH_MT6990		"mediatek/mt7996/mt7996_rom_patch_mt6990.bin"
++#define MT7996_FIRMWARE_WA_MT6990_AIR6	"mediatek/mt7996/mt7996_wa_mt6990_air6.bin"
++#define MT7996_FIRMWARE_WM_MT6990_AIR6	"mediatek/mt7996/mt7996_wm_mt6990_air6.bin"
++#define MT7996_FIRMWARE_DSP_MT6990_AIR6	MT7996_FIRMWARE_DSP_MT6990
++#define MT7996_ROM_PATCH_MT6990_AIR6	"mediatek/mt7996/mt7996_rom_patch_mt6990_air6.bin"
 +
  #define MT7996_FIRMWARE_WA_233		"mediatek/mt7996/mt7996_wa_233.bin"
  #define MT7996_FIRMWARE_WM_233		"mediatek/mt7996/mt7996_wm_233.bin"
@@ -23,20 +27,24 @@ cal-free EFUSE reads.
 
 --- a/mt7996/eeprom.c
 +++ b/mt7996/eeprom.c
-@@ -5,5 +5,6 @@
+@@ -5,5 +5,7 @@
  
  #include <linux/firmware.h>
++#include <linux/of.h>
 +#include <linux/pci.h>
  #include "mt7996.h"
  #include "eeprom.h"
  
-@@ -48,6 +49,10 @@ static char *mt7996_eeprom_name(struct mt7996_dev *dev)
+@@ -48,6 +50,13 @@ static char *mt7996_eeprom_name(struct mt7996_dev *dev)
  		return MT7990_EEPROM_DEFAULT;
  	case MT7996_DEVICE_ID:
  	default:
 +		if (dev_is_pci(dev->mt76.dev) &&
-+		    to_pci_dev(dev->mt76.dev)->subsystem_device == 0x6639)
++		    to_pci_dev(dev->mt76.dev)->subsystem_device == 0x6639) {
++			if (of_machine_is_compatible("softbank,air6"))
++				return "mediatek/mt7996/mt7996_eeprom_mt6990_air6.bin";
 +			return "mediatek/mt7996/mt7996_eeprom_mt6990.bin";
++		}
 +
  		switch (dev->var.type) {
  		case MT7996_VAR_TYPE_233:
@@ -44,35 +52,42 @@ cal-free EFUSE reads.
 
 --- a/mt7996/mcu.c
 +++ b/mt7996/mcu.c
-@@ -4,6 +4,7 @@
+@@ -4,6 +4,8 @@
   */
  
  #include <linux/firmware.h>
++#include <linux/of.h>
 +#include <linux/pci.h>
  #include <linux/fs.h>
  #include "mt7996.h"
  #include "mcu.h"
-@@ -30,6 +31,12 @@
+@@ -30,6 +32,15 @@
  		break;						\
  	case MT7996_DEVICE_ID:						\
  	default:						\
 +		if (dev_is_pci((_dev)->mt76.dev) &&			\
 +		    to_pci_dev((_dev)->mt76.dev)->subsystem_device ==	\
 +		    0x6639) {					\
-+			_fw = MT7996_##name##_MT6990;			\
++			if (of_machine_is_compatible("softbank,air6"))	\
++				_fw = MT7996_##name##_MT6990_AIR6;	\
++			else						\
++				_fw = MT7996_##name##_MT6990;		\
 +			break;						\
 +		}							\
  		switch ((_dev)->var.type) {			\
  		case MT7996_VAR_TYPE_233:			\
  			_fw = MT7996_##name##_233;		\
-@@ -4504,9 +4511,11 @@ int mt7996_mcu_set_eeprom(struct mt7996_dev *dev)
+@@ -4504,9 +4515,14 @@ int mt7996_mcu_set_eeprom(struct mt7996_dev *dev)
  	u8 *eep = (u8 *)dev->mt76.eeprom.data;
  	int ret, eep_len, i;
  
 -	ret = mt7996_mcu_get_cal_free_data(dev);
 -	if (ret)
 -		return ret;
-+	if (dev->eeprom_mode != EEPROM_MODE_DEFAULT_BIN) {
++	if (dev->eeprom_mode != EEPROM_MODE_DEFAULT_BIN &&
++	    !(dev_is_pci(dev->mt76.dev) &&
++	      to_pci_dev(dev->mt76.dev)->subsystem_device == 0x6639 &&
++	      of_machine_is_compatible("softbank,air6"))) {
 +		ret = mt7996_mcu_get_cal_free_data(dev);
 +		if (ret)
 +			return ret;
@@ -82,7 +97,7 @@ cal-free EFUSE reads.
  		struct sk_buff *skb;
 --- a/mt7996/mt7996.h
 +++ b/mt7996/mt7996.h
-@@ -653,13 +653,6 @@ static inline bool mt7996_has_hwrro(struct mt7996_dev *dev)
+@@ -653,13 +657,6 @@ static inline bool mt7996_has_hwrro(struct mt7996_dev *dev)
  }
  
 -static inline bool

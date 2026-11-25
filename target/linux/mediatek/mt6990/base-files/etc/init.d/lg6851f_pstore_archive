@@ -160,5 +160,6 @@ archive_pstore() {
 }
 
 start() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "fiberhome,lg6851f" ] || return 0
 	archive_pstore
 }

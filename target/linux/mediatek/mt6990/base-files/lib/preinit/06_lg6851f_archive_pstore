@@ -2,6 +2,7 @@
 # Archive a previous B-slot crash before network, Wi-Fi and modem services run.
 
 lg6851f_archive_previous_pstore() {
+	grep -aq 'fiberhome,lg6851f' /proc/device-tree/compatible 2>/dev/null || return 0
 	/etc/init.d/lg6851f_pstore_archive start >/dev/null 2>&1 || true
 }
 

@@ -5,6 +5,7 @@ STOP=10
 USE_PROCD=1
 
 start_service() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "fiberhome,lg6851f" ] || return 0
 	procd_open_instance
 	procd_set_param command /bin/sh -c 'while :; do /usr/sbin/lg6851f-fair-qos start >/dev/null 2>&1 && sleep 30 || sleep 3; done'
 	procd_set_param respawn 3600 5 0

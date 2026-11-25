@@ -88,12 +88,20 @@ modem_is_settled() {
 	modem_processes_ready
 }
 
+board_is_air6() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "softbank,air6" ] && return 0
+	grep -aq 'softbank,air6' /proc/device-tree/compatible 2>/dev/null
+}
+
 enable_management_wifi() {
-	local section radio_count=0 ap_count=0 changed=0
+	local section radio_count=0 ap_count=0 changed=0 country="CN"
+	local radio band enc key target_enc
+
+	board_is_air6 && country="JP"
 
 	for section in $(wireless_sections); do
 		uci -q set "wireless.$section.disabled=0"
-		uci -q set "wireless.$section.country=CN"
+		uci -q set "wireless.$section.country=$country"
 		changed=1
 		radio_count=$((radio_count + 1))
 	done
@@ -101,6 +109,17 @@ enable_management_wifi() {
 	for section in $(wireless_interfaces); do
 		[ "$(uci -q get "wireless.$section.mode")" = "ap" ] || continue
 		uci -q set "wireless.$section.disabled=0"
+		if board_is_air6; then
+			enc="$(uci -q get "wireless.$section.encryption")"
+			key="$(uci -q get "wireless.$section.key")"
+			if [ -z "$enc" ] || [ "$enc" = "none" ] || [ "$enc" = "owe" ] || [ -z "$key" ]; then
+				radio="$(uci -q get "wireless.$section.device")"
+				band="$(uci -q get "wireless.$radio.band")"
+				[ "$band" = "6g" ] && target_enc="sae" || target_enc="sae-mixed"
+				uci -q set "wireless.$section.encryption=$target_enc"
+				uci -q set "wireless.$section.key=12345678"
+			fi
+		fi
 		changed=1
 		ap_count=$((ap_count + 1))
 	done
